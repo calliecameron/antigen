@@ -172,6 +172,7 @@ antigen-env () {
             unset ANTIGEN_THIS_PLUGIN_DIR
         fi
         export ANTIGEN_PLUGINS_ENVED="$ANTIGEN_PLUGINS_ENVED:$location"
+        export ANTIGEN_SCRIPTS_ENVED="$ANTIGEN_SCRIPTS_ENVED:$env_script"
     fi
 }
 
@@ -359,8 +360,13 @@ antigen-env () {
 
         elif ls "$location" | grep -l '\.sh$' &> /dev/null; then
             # If there are no `*.zsh` files either, we look for and source any
-            # `*.sh` files instead.
-            for script ($location/*.sh(N)) { "$command" "$script" }
+            # `*.sh` files instead - but only if they haven't already been
+            # sourced by antigen-env.
+            for script ($location/*.sh(N)) {
+                    if ! [[ "$ANTIGEN_SCRIPTS_ENVED" =~ "$(readlink -m "$script")" ]]; then
+                        "$command" "$script"
+                    fi
+                }
 
         fi
 
