@@ -154,7 +154,7 @@ antigen-revert () {
 
 antigen-env () {
     while (($#)); do
-        -antigen-env-internal "$(-antigen-get-clone-dir "$(-antigen-resolve-bundle-url "$1")")"
+        -antigen-env-internal "$(-antigen-get-clone-dir "$(-antigen-resolve-bundle-url "$1")")" 'source'
         shift
     done
 }
@@ -162,12 +162,13 @@ antigen-env () {
 -antigen-env-internal () {
     # Remove trailing slash to avoid confusion
     local location="$(readlink -m "$1")"
+    local command="$2"
 
     if ! [[ "$ANTIGEN_PLUGINS_ENVED" =~ "$location" ]]; then
         local env_script="$(-antigen-get-env-script "$location")"
         if [[ ! -z "$env_script" ]]; then
             ANTIGEN_THIS_PLUGIN_DIR="$location"
-            source "$env_script"
+            "$command" "$env_script"
             unset ANTIGEN_THIS_PLUGIN_DIR
         fi
         export ANTIGEN_PLUGINS_ENVED="$ANTIGEN_PLUGINS_ENVED:$location"
@@ -301,6 +302,17 @@ antigen-env () {
     local loc="$2"
     local make_local_clone="$3"
 
+    # If we are in zsh, we can source files directly. Otherwise, report files
+    # to source back to the wrapper script.
+    [[ -z "$antigen_shell" ]] && antigen_shell='zsh'
+    local command
+
+    if [[ "$antigen_shell" == 'zsh' ]]; then
+        command='source'
+    else
+        command='echo'
+    fi
+
     # The full location where the plugin is located.
     local location
     if $make_local_clone; then
@@ -312,24 +324,24 @@ antigen-env () {
     [[ $loc != "/" ]] && location="$location$loc"
 
     if [[ -f "$location" ]]; then
-        source "$location"
+        "$command" "$location"
 
     else
 
         # Source the plugin's environments variables, if not already done by
         # antigen-env.
-        -antigen-env-internal "$location"
+        -antigen-env-internal "$location" "$command"
 
         # Source the plugin script.
         # FIXME: I don't know. Looks very very ugly. Needs a better
         # implementation once tests are ready.
-        local script_loc="$(ls "$location" | grep '\.plugin\.zsh$' | head -n1)"
+        local script_loc="$(ls "$location" | grep "\\.plugin\\.$antigen_shell\$" | head -n1)"
 
         if [[ -f $location/$script_loc ]]; then
             # If we have a `*.plugin.zsh`, source it.
-            source "$location/$script_loc"
+            "$command" "$location/$script_loc"
 
-        elif [[ -f $location/init.zsh ]]; then
+        elif [[ "$antigen_shell" == 'zsh' ]] && [[ -f $location/init.zsh ]]; then
             # If we have a `init.zsh`
             if (( $+functions[pmodload] )); then
                 # If pmodload is defined pmodload the module. Remove `modules/`
@@ -337,18 +349,18 @@ antigen-env () {
                 pmodload "${loc#modules/}"
             else
                 # Otherwise source it.
-                source "$location/init.zsh"
+                "$command" "$location/init.zsh"
             fi
 
-        elif ls "$location" | grep -l '\.zsh$' &> /dev/null; then
+        elif ls "$location" | grep -l "\\.$antigen_shell\$" &> /dev/null; then
             # If there is no `*.plugin.zsh` file, source *all* the `*.zsh`
             # files.
-            for script ($location/*.zsh(N)) { source "$script" }
+            for script ($location/*.${antigen_shell}(N)) { "$command" "$script" }
 
         elif ls "$location" | grep -l '\.sh$' &> /dev/null; then
             # If there are no `*.zsh` files either, we look for and source any
             # `*.sh` files instead.
-            for script ($location/*.sh(N)) { source "$script" }
+            for script ($location/*.sh(N)) { "$command" "$script" }
 
         fi
 
